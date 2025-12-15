@@ -57,7 +57,7 @@ if uploaded_file:
 if api_key:
     genai.configure(api_key=api_key)
     # Using Flash Lite for speed/free tier
-    model = genai.GenerativeModel('gemini-2.0-flash-lite')
+    model = genai.GenerativeModel('gemma-3-4b-it')
 
     # Initialize Chat History
     if "messages" not in st.session_state:
@@ -135,3 +135,4 @@ if api_key:
                     st.session_state.messages.append({"role": "assistant", "content": response.text})
                 except Exception as e:
                     st.error(f"Error: {e}")
+
