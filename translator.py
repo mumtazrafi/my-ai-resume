@@ -1,107 +1,137 @@
 import streamlit as st
 import google.generativeai as genai
-from pypdf import PdfReader # We use this to read uploaded PDFs
+from pypdf import PdfReader
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="DeepSeeker (My RAG App)", page_icon="🧠", layout="wide")
+# --- PAGE CONFIGURATION ---
+st.set_page_config(
+    page_title="Internship Resume Checker",
+    page_icon="🚀",
+    layout="wide" # Changed to wide for a more pro feel
+)
 
-# --- 1. SIDEBAR & SECRETS CONFIGURATION ---
+# --- SIDEBAR: SETTINGS & CREDIT ---
 with st.sidebar:
-    st.title("⚙️ Settings")
+    st.header("⚙️ Configuration")
     
-    # Check if the key exists in Streamlit Secrets (Cloud)
+    # 1. API Key Handling
     if "GOOGLE_API_KEY" in st.secrets:
-        api_key = st.secrets["GOOGLE_API_KEY"] # Use the hidden key
-        st.success("✅ API Key loaded from Secrets")
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        st.success("✅ System Online")
     else:
-        # Fallback: If running locally without secrets, ask for it
         api_key = st.text_input("Enter Google API Key:", type="password")
+        if not api_key:
+            st.warning("⚠️ Please enter a key to start.")
+
+    # 2. File Uploader
+    st.markdown("---")
+    st.subheader("📂 Step 1: Upload Resume")
+    uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
     
-    # THE FILE UPLOADER
-    st.header("📂 Knowledge Base")
-    uploaded_file = st.file_uploader("Upload a PDF or TXT file", type=["pdf", "txt"])
+    st.markdown("---")
+    st.caption("🔒 Privacy Note: Files are analyzed in memory and not saved.")
+    
+    # --- THE CREDIT (Bottom Corner) ---
+    st.markdown("---")
+    st.markdown("🛠️ **Made by Rafi Mumtaz**")
 
-# 2. LOGIC: PROCESS THE FILE
+# --- MAIN UI ---
+# Generic Professional Title
+st.title("🚀 AI Internship Resume Checker")
+st.markdown("""
+**Will you get the interview?** This AI analyzes your resume against industry standards. Upload your PDF to see your "Hiring Probability" score.
+""")
+st.divider()
+
+# --- FILE PROCESSING ---
 user_knowledge = ""
-
-if uploaded_file and api_key:
+if uploaded_file:
     try:
-        # Check file type
-        if uploaded_file.name.endswith(".pdf"):
-            reader = PdfReader(uploaded_file)
-            # Loop through every page and extract text
-            for page in reader.pages:
-                user_knowledge += page.extract_text()
-        else:
-            # It's a text file
-            user_knowledge = uploaded_file.read().decode("utf-8")
-            
+        reader = PdfReader(uploaded_file)
+        for page in reader.pages:
+            user_knowledge += page.extract_text()
+        st.toast(f"✅ Analyzed {len(reader.pages)} pages successfully!", icon="📄")
     except Exception as e:
         st.error(f"Error reading file: {e}")
 
-# 3. AI SETUP
+# --- CHAT & AI LOGIC ---
 if api_key:
     genai.configure(api_key=api_key)
-    try:
-        # We use a slightly smarter model for analyzing documents if available
-        # But stick to Gemma or Flash Lite for free tier
-        model = genai.GenerativeModel('gemma-3-4b-it') 
-    except:
-        st.error("API Key invalid or model not found.")
+    # Using Flash Lite for speed/free tier
+    model = genai.GenerativeModel('gemini-2.0-flash-lite')
 
-# --- MAIN CHAT INTERFACE ---
-st.title("🧠 DeepSeeker: Chat with Your Data")
-st.markdown("Upload a document in the sidebar to create your own Custom AI.")
+    # Initialize Chat History
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {"role": "assistant", "content": "Hi! Upload your resume and I'll calculate your odds of getting that internship."}
+        ]
 
-# Initialize Memory
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    # Display Chat
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-# Display History
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-# Capture Input
-if user_input := st.chat_input("Ask about your document..."):
-    
-    if not api_key:
-        st.warning("Please enter your API Key in the sidebar first!")
-        st.stop()
-
-    # Show User Message
-    with st.chat_message("user"):
-        st.markdown(user_input)
-    st.session_state.messages.append({"role": "user", "content": user_input})
-
-    # --- RAG LOGIC ---
-    # We only add the context if a file was uploaded
-    context_block = ""
+    # --- INTERACTIVE BUTTONS ---
+    # Only show these if a file is uploaded
     if user_knowledge:
-        context_block = f"CONTEXT FROM UPLOADED DOCUMENT:\n{user_knowledge}\n\n"
-    
-    prompt = f"""
-    Act as a skeptical, grumpy Senior Hiring Manager. Look for gaps in the resume. Only recommend hiring if they are exceptional.
-    
-    {context_block}
-    
-    HISTORY:
-    {st.session_state.messages}
-    
-    QUESTION:
-    {user_input}
-    
-    INSTRUCTIONS:
-    - If context is provided, answer BASED ON THAT CONTEXT.
-    - If the answer is not in the document, say "I couldn't find that in the document."
-    """
+        col1, col2, col3 = st.columns(3)
+        action_clicked = False
+        
+        with col1:
+            if st.button("🔥 Roast My Resume", use_container_width=True):
+                user_input = "Roast this resume ruthlessly. Tell me why I won't get hired."
+                action_clicked = True
+        with col2:
+            if st.button("📊 Probability Score", use_container_width=True):
+                user_input = "Rate this resume out of 100 based on internship standards and explain the score."
+                action_clicked = True
+        with col3:
+            if st.button("🔑 Key Improvements", use_container_width=True):
+                user_input = "What are the top 3 specific things I must change to get hired?"
+                action_clicked = True
+    else:
+        action_clicked = False
 
-    with st.chat_message("assistant"):
-        with st.spinner("Analyzing document..."):
-            try:
-                response = model.generate_content(prompt)
-                st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
-            except Exception as e:
+    # --- INPUT HANDLING ---
+    if chat_input := st.chat_input("Ask about your resume..."):
+        user_input = chat_input
+        action_clicked = True
 
-                st.error(f"Error: {e}")
+    if action_clicked and user_input:
+        
+        if not user_knowledge:
+            st.warning("⚠️ Please upload a PDF in the sidebar first!")
+            st.stop()
+
+        # Add User Message
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        # --- SYSTEM PROMPT ---
+        prompt = f"""
+        You are a Senior Hiring Manager at a top-tier company.
+        
+        RESUME CONTENT:
+        {user_knowledge}
+        
+        CHAT HISTORY:
+        {st.session_state.messages}
+        
+        USER QUESTION:
+        {user_input}
+        
+        INSTRUCTIONS:
+        1. Always be honest and direct.
+        2. If asked for a score, provide a specific "Pass Probability" percentage (e.g., 85%).
+        3. Keep answers structured and professional.
+        """
+
+        # Generate Response
+        with st.chat_message("assistant"):
+            with st.spinner("Analyzing profile..."):
+                try:
+                    response = model.generate_content(prompt)
+                    st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                except Exception as e:
+                    st.error(f"Error: {e}")
